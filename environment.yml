@@ -1,0 +1,25 @@
+name: attention-free-transformer
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8
+  - pip
+  - pytorch:pytorch=1.7
+  - pytorch:torchvision=0.8
+  - nvidia:cudatoolkit=11.0
+  - jupyter
+  - matplotlib
+  - kaggle
+  - scikit-image
+  - albumentations
+  - pandas
+  - scikit-learn
+  - opencv
+  - tensorboard
+  - pycocotools
+  - pytorch-lightning
+  - pip:
+      - git+https://github.com/rwightman/pytorch-image-models.git@v0.3.4
