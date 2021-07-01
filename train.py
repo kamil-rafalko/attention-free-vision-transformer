@@ -42,8 +42,12 @@ class LightingVisionTransformer(pl.LightningModule):
         x, y = batch
         y = y.float()
         output = F.sigmoid(self.forward(x)).squeeze()
+        # print()
+        # print("Output:", output)
+        # print("Y shape:", y)
         loss = F.binary_cross_entropy(output, y)
         pred = (output > 0.5).float()
+        # print("Pred:", pred)
         accuracy = torch.sum(y == pred).item() / (len(y) * 1.0)
         self.log('train_loss', loss, on_step=True, on_epoch=True)
         self.log('train_accuracy', accuracy, on_step=True, on_epoch=True)
@@ -56,8 +60,12 @@ class LightingVisionTransformer(pl.LightningModule):
         x, y = val_batch
         y = y.float()
         output = F.sigmoid(self.forward(x)).squeeze()
+        # print()
+        # print("Output:", output)
+        # print("Y shape:", y)
         loss = F.binary_cross_entropy(output, y)
         pred = (output > 0.5).float()
+        # print("Pred:", pred)
         accuracy = torch.sum(y == pred).item() / (len(y) * 1.0)
         self.log('val_loss', loss, on_step=True, on_epoch=True)
         self.log('val_accuracy', accuracy, on_step=True, on_epoch=True)
@@ -70,6 +78,7 @@ def get_transform(train):
     transforms = []
     transforms.append(T.ToTensor())
     transforms.append(T.Resize(384))
+    transforms.append(T.Normalize([6.4036902, 27.1573784, 31.35695405], [23.49524942, 64.09265835, 72.92890321]))
     if train:
         transforms.append(T.RandomHorizontalFlip(0.5))
     return T.Compose(transforms)
@@ -172,7 +181,7 @@ def main_lighting():
     val_samples = next(iter(val_loader))
     image_callback = ImagePredictionLogger(val_samples)
 
-    model = LightingVisionTransformer(lr=1e-4)
+    model = LightingVisionTransformer(lr=1e-2)
     trainer = pl.Trainer(gpus=1, max_epochs=epochs, callbacks=[image_callback])
     trainer.fit(model, train_loader, val_loader)
 

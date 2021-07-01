@@ -32,3 +32,20 @@ for image_file_name, label in zip(file_names, labels):
 from pycocotools.coco import COCO
 
 coco = COCO('data/lemon-dataset/annotations/instances_default.json')
+
+#%%
+import cv2
+import glob
+
+images = [cv2.imread(file) for file in glob.glob('data/lemon-dataset/images/*.jpg')]
+
+#%%
+import numpy as np
+
+images_ndarray = np.array(images)
+
+#%%
+np.mean(images_ndarray, axis=(0, 1, 2))
+
+#%%
+np.std(images_ndarray, axis=(0, 1, 2))
