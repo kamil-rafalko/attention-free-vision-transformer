@@ -65,19 +65,19 @@ class Attention(nn.Module):
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
 
-        self.to_q = nn.Linear(dim, dim)
-        self.to_k = nn.Linear(dim, n_heads)
-        self.to_v = nn.Linear(dim, dim)
+        self.to_q = nn.Conv2d(dim, dim, 1)
+        self.to_k = nn.Conv2d(dim, n_heads, 1)
+        self.to_v = nn.Conv2d(dim, dim, 1)
 
         self.attn_drop = nn.Dropout(attn_p)
-        self.proj = nn.Linear(dim, dim)
+        self.proj = nn.Conv2d(dim, dim, 1)
         self.proj_drop = nn.Dropout(proj_p)
 
-        self.wbias = nn.Parameter(torch.Tensor(n_heads, n_heads, window_size, window_size))  # TODO: check dimensions (n_patches + 1) - should be s ?
+        self.wbias = nn.Parameter(torch.Tensor(n_heads, n_heads, window_size, window_size))
         nn.init.xavier_uniform_(self.wbias)
         self.eps = eps
 
-        self.gamma = nn.Parameter(torch.Tensor(n_heads, n_heads, window_size, window_size))  # TODO choose some size
+        self.gamma = nn.Parameter(torch.Tensor(n_heads, n_heads, window_size, window_size))
         self.beta = nn.Parameter(torch.Tensor(n_heads, n_heads, window_size, window_size))
         nn.init.zeros_(self.gamma)
         nn.init.zeros_(self.beta)
@@ -92,11 +92,11 @@ class Attention(nn.Module):
                 Shape(n_samples, n_patches + 1, dim)
         """
         # print("x has nan", torch.isnan(x).any())
-        B, T, dim = x.shape
+        B, C, H, W = x.shape
 
-        q = self.to_q(x).view(B, T, self.n_heads, self.head_dim).permute((0, 2, 1, 3))
-        k = self.to_k(x).view(B, T, self.n_heads).permute((0, 2, 1))
-        v = self.to_v(x).view(B, T, self.n_heads, self.head_dim).permute((0, 2, 1, 3))
+        q = self.to_q(x)  # .view(B, C, self.n_heads, self.head_dim).permute((0, 2, 1, 3))
+        k = self.to_k(x)  # .view(B, C, self.n_heads).permute((0, 2, 1))
+        v = self.to_v(x)  # .view(B, C, self.n_heads, self.head_dim).permute((0, 2, 1, 3))
 
         self.wbias = nn.Parameter(self.gamma * (self.wbias - torch.mean(self.wbias)) / (torch.std(self.wbias) + self.eps) + self.beta)
 
@@ -115,11 +115,11 @@ class Attention(nn.Module):
         q_sig = torch.sigmoid(q) # (n_samples, n_heads, n_patches + 1, head_dim)
 
         k_t = k.transpose(-2, -1)
-        input = torch.mul(k.unsqueeze(3), v)
+        input = torch.mul(k_t, v)
         input_pad = F.pad(input, (7, 8, 7, 8))
-        dividend = torch.conv2d(input_pad, torch.exp(self.wbias) - 1) + torch.sum(torch.mul(torch.exp(k).unsqueeze(3), v), dim=2, keepdim=True)
-        k_pad = F.pad(k.unsqueeze(3), (7, 8, 7, 8))
-        devisior = torch.conv2d(k_pad, torch.exp(self.wbias) - 1) + torch.sum(k.unsqueeze(3), dim=2, keepdim=True)
+        dividend = torch.conv2d(input_pad, torch.exp(self.wbias) - 1) + torch.sum(torch.mul(k_t, v), dim=2, keepdim=True)
+        k_pad = F.pad(k, (7, 8, 7, 8))
+        devisior = torch.conv2d(k_pad, torch.exp(self.wbias) - 1) + torch.sum(k, dim=2, keepdim=True)
 
         weighted = dividend / (devisior + self.eps)
 
@@ -127,10 +127,10 @@ class Attention(nn.Module):
         # print("weighted has nan", torch.isnan(weighted).any())
 
         Yt = torch.mul(q_sig, weighted)
-        Yt = Yt.transpose(
-            1, 2
-        )  # (n_samples, n_patches + 1, n_heads, head_dim)
-        Yt = Yt.flatten(2) # (n_samples, n_patches + 1, dim)
+        # Yt = Yt.transpose(
+        #     1, 2
+        # )  # (n_samples, n_patches + 1, n_heads, head_dim)
+        # Yt = Yt.flatten(2) # (n_samples, n_patches + 1, dim)
 
         Yt = self.proj(Yt)
         # Yt = self.proj_drop(Yt)
@@ -163,12 +163,14 @@ class Attention(nn.Module):
 class MLP(nn.Module):
     def __init__(self, in_features, hidden_features, out_features, p=0.):
         super().__init__()
+        self.pooling = nn.AvgPool2d(in_features)
         self.fc1 = nn.Linear(in_features, hidden_features)
         self.act = nn.GELU()
         self.fc2 = nn.Linear(hidden_features, out_features)
         self.drop = nn.Dropout(p)
 
     def forward(self, x):
+        x = torch.mean(x.view(x.size(0), x.size(1), -1), dim=2)
         # print("x mlp", torch.isnan(x).any())
         x = self.fc1(
             x
@@ -188,7 +190,7 @@ class MLP(nn.Module):
 class Block(nn.Module):
     def __init__(self, dim, n_heads, window_size=16, mlp_ratio=4.0, qkv_bias=True, p=0., attn_p=0.):
         super().__init__()
-        self.norm1 = nn.LayerNorm(dim)
+        self.norm1 = nn.BatchNorm2d(dim)
         self.attn = Attention(
             dim,
             n_heads=n_heads,
@@ -197,7 +199,7 @@ class Block(nn.Module):
             attn_p=attn_p,
             proj_p=p
         )
-        self.norm2 = nn.LayerNorm(dim)
+        self.norm2 = nn.BatchNorm2d(dim)
         hidden_features = int(dim * mlp_ratio)
         self.mlp = MLP(
             in_features=dim,
@@ -213,7 +215,7 @@ class Block(nn.Module):
         # print("Norm weight:", self.norm2.weight, "norm bias:", self.norm2.bias)
         x_norm = self.norm2(x)
         # print("x_norm block after attn has nan", torch.isnan(x_norm).any())
-        x = x + self.mlp(x_norm)
+        x = self.mlp(x_norm)
         # print("x block after mlp has nan", torch.isnan(x).any())
 
         return x
@@ -269,14 +271,14 @@ class VisionTransformer(nn.Module):
 
     def forward(self, x):
         n_samples = x.shape[0]
-        x = self.patch_embed(x)
+        # x = self.patch_embed(x)
 
         # cls_token = self.cls_token.expand(
         #     n_samples, -1, -1
         # )
         # x = torch.cat((cls_token, x), dim=1)
         # x = x + self.pos_embed
-        x = self.pos_drop(x)
+        # x = self.pos_drop(x)
 
         # print("x transformer has nan", torch.isnan(x).any())
         for block in self.blocks:
@@ -285,7 +287,7 @@ class VisionTransformer(nn.Module):
         x = self.norm(x)
 
         cls_token_final = x[:, 0]
-        x = self.head(cls_token_final)
+        x = self.head(x)
 
         return x
 

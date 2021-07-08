@@ -16,12 +16,12 @@ epochs = 50
 
 model_config = {
     "img_size": 384,
-    "patch_size": 16,
+    "patch_size": 384,
     "in_chans": 3,
     "n_classes": 1,
-    "embed_dim": 768,
-    "depth": 12,
-    "n_heads": 12,
+    "embed_dim": 3,
+    "depth": 1,
+    "n_heads": 3,
     "qkv_bias": True,
     "mlp_ratio": 4
 }
@@ -41,13 +41,13 @@ class LightingVisionTransformer(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         x, y = batch
         y = y.float()
-        output = F.sigmoid(self.forward(x)).squeeze()
-        # print()
-        # print("Output:", output)
-        # print("Y shape:", y)
+        output = F.sigmoid(self.forward(x)).squeeze(dim=1)
+        print()
+        print("Output:", output)
+        print("Y shape:", y)
         loss = F.binary_cross_entropy(output, y)
         pred = (output > 0.5).float()
-        # print("Pred:", pred)
+        print("Pred:", pred)
         accuracy = torch.sum(y == pred).item() / (len(y) * 1.0)
         self.log('train_loss', loss, on_step=True, on_epoch=True)
         self.log('train_accuracy', accuracy, on_step=True, on_epoch=True)
@@ -59,13 +59,13 @@ class LightingVisionTransformer(pl.LightningModule):
     def validation_step(self, val_batch, batch_idx):
         x, y = val_batch
         y = y.float()
-        output = F.sigmoid(self.forward(x)).squeeze()
-        # print()
-        # print("Output:", output)
-        # print("Y shape:", y)
+        output = F.sigmoid(self.forward(x)).squeeze(dim=1)
+        print()
+        print("Output:", output)
+        print("Y shape:", y)
         loss = F.binary_cross_entropy(output, y)
         pred = (output > 0.5).float()
-        # print("Pred:", pred)
+        print("Pred:", pred)
         accuracy = torch.sum(y == pred).item() / (len(y) * 1.0)
         self.log('val_loss', loss, on_step=True, on_epoch=True)
         self.log('val_accuracy', accuracy, on_step=True, on_epoch=True)
@@ -77,7 +77,7 @@ class LightingVisionTransformer(pl.LightningModule):
 def get_transform(train):
     transforms = []
     transforms.append(T.ToTensor())
-    transforms.append(T.Resize(384))
+    transforms.append(T.Resize(model_config['img_size']))
     transforms.append(T.Normalize([6.4036902, 27.1573784, 31.35695405], [23.49524942, 64.09265835, 72.92890321]))
     if train:
         transforms.append(T.RandomHorizontalFlip(0.5))
@@ -175,8 +175,8 @@ def main_lighting():
     train_dataset = datasets.ImageFolder('data/lemon-tiny-dataset/train', transform=get_transform(True))
     val_dataset = datasets.ImageFolder('data/lemon-tiny-dataset/val', transform=get_transform(True))
 
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=8, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=True)
 
     val_samples = next(iter(val_loader))
     image_callback = ImagePredictionLogger(val_samples)
